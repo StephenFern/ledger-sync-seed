@@ -11,7 +11,9 @@ import java.util.List;
  */
 public interface LedgerStore {
 
-    void save(NormalizedTxn txn);
+//    void save(NormalizedTxn txn);
+    
+    void saveBatch(List<NormalizedTxn> transactions);
 
     List<NormalizedTxn> all();
 

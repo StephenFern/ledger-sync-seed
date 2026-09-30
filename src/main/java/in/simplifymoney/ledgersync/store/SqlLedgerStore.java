@@ -32,7 +32,7 @@ public final class SqlLedgerStore implements LedgerStore, AutoCloseable {
     public SqlLedgerStore(Path dbFile) {
         try {
             this.conn = DriverManager.getConnection(
-                    URL_PREFIX + dbFile.toAbsolutePath() + ";MODE=PostgreSQL", "sa", "");
+                    URL_PREFIX + dbFile.toAbsolutePath() + ";MODE=PostgreSQL;AUTO_SERVER=TRUE", "sa", "");
         } catch (SQLException e) {
             throw new IllegalStateException(
                     "could not open the ledger database at " + dbFile
@@ -76,24 +76,24 @@ public final class SqlLedgerStore implements LedgerStore, AutoCloseable {
         }
     }
 
-    @Override
-    public void save(NormalizedTxn t) {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO ledger(account_last4, occurred_at, direction, amount,"
-                        + " category, merchant, source_message_ids)"
-                        + " VALUES (?,?,?,?,?,?,?)")) {
-            ps.setString(1, t.accountLast4());
-            ps.setString(2, t.occurredAt().toString());
-            ps.setString(3, t.direction().name());
-            ps.setBigDecimal(4, t.amount());
-            ps.setString(5, t.category().name());
-            ps.setString(6, t.merchant());
-            ps.setString(7, String.join(",", t.sourceMessageIds()));
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new IllegalStateException("could not save " + t, e);
-        }
-    }
+//    @Override
+//    public void save(NormalizedTxn t) {
+//        try (PreparedStatement ps = conn.prepareStatement(
+//                "INSERT INTO ledger(account_last4, occurred_at, direction, amount,"
+//                        + " category, merchant, source_message_ids)"
+//                        + " VALUES (?,?,?,?,?,?,?)")) {
+//            ps.setString(1, t.accountLast4());
+//            ps.setString(2, t.occurredAt().toString());
+//            ps.setString(3, t.direction().name());
+//            ps.setBigDecimal(4, t.amount());
+//            ps.setString(5, t.category().name());
+//            ps.setString(6, t.merchant());
+//            ps.setString(7, String.join(",", t.sourceMessageIds()));
+//            ps.executeUpdate();
+//        } catch (SQLException e) {
+//            throw new IllegalStateException("could not save " + t, e);
+//        }
+//    }
 
     @Override
     public List<NormalizedTxn> all() {
@@ -143,4 +143,41 @@ public final class SqlLedgerStore implements LedgerStore, AutoCloseable {
     public void close() {
         try { conn.close(); } catch (SQLException ignored) { }
     }
+    
+	@Override
+	public void saveBatch(List<NormalizedTxn> transactions) {
+		String sql = """
+				INSERT INTO ledger(
+				    account_last4,
+				    occurred_at,
+				    direction,
+				    amount,
+				    category,
+				    merchant,
+				    source_message_ids
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				""";
+
+		try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+			for (NormalizedTxn t : transactions) {
+				ps.setString(1, t.accountLast4());
+				ps.setString(2, t.occurredAt().toString());
+				ps.setString(3, t.direction().name());
+				ps.setBigDecimal(4, t.amount());
+				ps.setString(5, t.category().name());
+				ps.setString(6, t.merchant());
+				ps.setString(7, String.join(",", t.sourceMessageIds()));
+
+				ps.addBatch();
+			}
+
+			ps.executeBatch();
+			ps.clearBatch();
+
+		} catch (SQLException e) {
+			throw new IllegalStateException("could not save transactions", e);
+		}
+	}
 }
