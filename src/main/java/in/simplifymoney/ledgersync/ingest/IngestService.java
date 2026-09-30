@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
-
+import java.math.BigDecimal;
 /**
  * Reads a corpus of raw messages and puts transactions in the ledger.
  *
@@ -39,15 +39,39 @@ public final class IngestService {
         List<RawMessage> messages = readCorpus(corpus);
         int parsed = 0;
         int skipped = 0;
+        int count = 0; 
+        List<NormalizedTxn> batch = new ArrayList<>(500);
         for (RawMessage m : messages) {
             Optional<ParsedTxn> p = parsers.parse(m);
             if (p.isEmpty()) {
                 skipped++;
                 continue;
             }
-            store.save(toTransaction(p.get()));
+            if (p.get().amount().compareTo(p.get().statedBalance()) == 0)
+            {
+                count++;
+                System.out.println("AFFECTED:");
+                System.out.println("messageId = " + m.messageId());
+                System.out.println("body = " + m.body());
+                System.out.println("amount = " + p.get().amount());
+                System.out.println("balance = " + p.get().statedBalance());
+                System.out.println();
+            }
+            batch.add(toTransaction(p.get()));
             parsed++;
+
+            if (batch.size() == 500) {
+                store.saveBatch(batch);
+                batch.clear();
+            }
         }
+        
+        if (!batch.isEmpty()) {
+            store.saveBatch(batch);
+        }
+        batch.clear();
+        System.out.println("count : "+count);
+        
         return new Stats(messages.size(), parsed, skipped);
     }
 
